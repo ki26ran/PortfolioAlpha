@@ -1,0 +1,31 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# DuckDB database files
+*.duckdb
+*.duckdb.wal
+
+# Data files
+data/*.json
+data/*.csv
+
+# Virtual environment
+venv/
+.venv/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Secrets (Telegram tokens, broker creds)
+telegram_config.json
+broker_config.json

@@ -1,0 +1,9 @@
+pandas>=1.5
+numpy>=1.24
+duckdb>=0.8
+streamlit>=1.20
+plotly>=5.13
+yfinance>=0.2.18
+requests>=2.28
+python-telegram-bot>=20.0
+NorenRestApiPy>=0.0.31
