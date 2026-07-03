@@ -7,6 +7,10 @@ __pycache__/
 *.duckdb
 *.duckdb.wal
 
+# But include blank schema-only DBs (track schema, not data)
+!common/market_data/market_data.duckdb
+!live/swingtrading.duckdb
+
 # Data files
 data/*.json
 data/*.csv
