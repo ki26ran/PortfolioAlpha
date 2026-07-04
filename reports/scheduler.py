@@ -19,7 +19,7 @@ CSS = """
 </style>
 """
 
-TASK_NAMES = ["Live Trader", "Stock Selection"]
+TASK_NAMES = ["Data Sync", "Live Trader", "Stock Selection"]
 FOLDER = "SwingPortfolio"
 PYTHON_EXE = sys.executable
 
@@ -49,7 +49,12 @@ def get_task_info(name):
 def _make_xml(name):
     now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")
     wd = BASE
-    if name == "Live Trader":
+    if name == "Data Sync":
+        script = os.path.join(wd, "agents", "data_sync.py")
+        start = "08:00"
+        cmd_args = f'"{script}"'
+        extra = ""
+    elif name == "Live Trader":
         script = os.path.join(wd, "agents", "live_trader.py")
         start = "09:42"
         cmd_args = f'"{script}"'
@@ -213,7 +218,7 @@ def _show_ubuntu():
 
     # ── Scheduled Scans ───────────────────────────────────────
     with tab2:
-        st.subheader("SwingPortfolio Cron Jobs")
+        st.subheader("PortfolioAlpha Cron Jobs")
         cron_content = subprocess.run(["sudo", "-n", "cat", "/etc/cron.d/portfolioalpha"], capture_output=True, text=True).stdout
         if cron_content:
             for line in cron_content.split("\n"):
@@ -223,10 +228,14 @@ def _show_ubuntu():
             st.info("No PortfolioAlpha cron jobs found")
 
         st.divider()
-        st.markdown("**Run Scan Manually**")
-        if st.button("Run Stock Selection (all strategies)", type="primary"):
-            cmd = ["/usr/bin/python3",
-                   "/opt/PortfolioAlpha/agents/stock_selection.py"]
+        st.markdown("**Run Manually**")
+        c1, c2 = st.columns(2)
+        if c1.button("Run Data Sync", type="primary", use_container_width=True):
+            cmd = ["/usr/bin/python3", "/opt/PortfolioAlpha/agents/data_sync.py"]
+            r = subprocess.run(cmd, capture_output=True, text=True, timeout=300, cwd="/opt/PortfolioAlpha")
+            st.code((r.stdout + "\n" + r.stderr).strip()[:2000], language="bash")
+        if c2.button("Run Stock Selection", type="secondary", use_container_width=True):
+            cmd = ["/usr/bin/python3", "/opt/PortfolioAlpha/agents/stock_selection.py"]
             r = subprocess.run(cmd, capture_output=True, text=True, timeout=120, cwd="/opt/PortfolioAlpha")
             st.code((r.stdout + "\n" + r.stderr).strip()[:2000], language="bash")
 
