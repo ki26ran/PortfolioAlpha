@@ -25,6 +25,23 @@ CSS = """
 """
 
 
+def _peak_concurrent_capital(trades_df):
+    """Compute peak concurrent capital deployed from trade DataFrame.
+    For each date, sums capital_deployed of all OPEN positions then returns max."""
+    if trades_df.empty or "capital_deployed" not in trades_df.columns:
+        return 0
+    df = trades_df.copy()
+    df["entry_dt"] = pd.to_datetime(df["entry_dt"])
+    df["exit_dt"] = pd.to_datetime(df["exit_dt"])
+    dates = pd.date_range(df["entry_dt"].min(), df["exit_dt"].max(), freq="D")
+    peak = 0
+    for d in dates:
+        open_cap = df[(df["entry_dt"] <= d) & (df["exit_dt"] > d)]["capital_deployed"].sum()
+        if open_cap > peak:
+            peak = open_cap
+    return peak
+
+
 def show():
     st.title("SwingPortfolio \u2014 Backtest")
     st.markdown(CSS, unsafe_allow_html=True)
@@ -245,6 +262,7 @@ def show():
         aw = w["pnl"].mean() if nw else 0
         al = abs(l["pnl"].mean()) if nl else 0
         total_cap = df["capital_deployed"].sum() if "capital_deployed" in df.columns and not df.empty else 0
+        peak_cap = _peak_concurrent_capital(df)
         avg_roi = df["roi_pct"].mean() if "roi_pct" in df.columns and not df.empty else 0
         dp = df.groupby(df["exit_dt"].dt.date)["pnl"].sum() if "exit_dt" in df.columns else df.groupby(lambda _: 0)["pnl"].sum()
         sh = round(dp.mean() / dp.std() * (252 ** 0.5), 2) if len(dp) > 1 and dp.std() > 0 else 0
@@ -253,7 +271,7 @@ def show():
             "Strategy": strat.name, "Trades": n, "P&L": f"Rs.{tot:+,.0f}", "WR": f"{wr:.0f}%",
             "PF": f"{pf:.2f}", "Sharpe": sh, "MDD": f"Rs.{mdd:+,.0f}",
             "AvgWin": f"Rs.{aw:+,.0f}", "AvgLoss": f"Rs.{al:+,.0f}",
-            "CapDep": f"Rs.{total_cap:+,.0f}", "AvgROI": f"{avg_roi:.1f}%"
+            "CapDep": f"Rs.{total_cap:+,.0f}", "PeakCap": f"Rs.{peak_cap:+,.0f}", "AvgROI": f"{avg_roi:.1f}%"
         })
 
     comp_df = pd.DataFrame(rows)
@@ -303,6 +321,7 @@ def show():
         dp = pdf.groupby(pdf["exit_dt"].dt.date)["pnl"].sum()
         sh = round(dp.mean() / dp.std() * (252 ** 0.5), 2) if len(dp) > 1 and dp.std() > 0 else 0
         total_cap = pdf["capital_deployed"].sum() if "capital_deployed" in pdf.columns and not pdf.empty else 0
+        peak_cap = _peak_concurrent_capital(pdf)
         avg_roi = pdf["roi_pct"].mean() if "roi_pct" in pdf.columns and not pdf.empty else 0
 
         c1, c2, c3, c4 = st.columns(4)
@@ -319,8 +338,8 @@ def show():
         c9.metric("Avg Win", f"Rs.{aw:+,.0f}")
         c10.metric("Avg Loss", f"Rs.{al:+,.0f}")
         c11.metric("Avg Hold", f"{avg_hold:.1f}d")
-        c12.metric("Total Cap", f"Rs.{total_cap:+,.0f}")
-        st.caption(f"Avg ROI per trade: {avg_roi:.1f}%  |  Capital deployed across all trades: Rs.{total_cap:+,.0f}")
+        c12.metric("Peak Cap", f"Rs.{peak_cap:+,.0f}")
+        st.caption(f"Avg ROI per trade: {avg_roi:.1f}%  |  Peak concurrent capital: Rs.{peak_cap:+,.0f} (cumulative: Rs.{total_cap:+,.0f})")
 
         st.subheader("Portfolio Equity Curve")
         strat_palette = {"donchian_adx": "#00bcd4", "keltner_rsi": "#ff9800", "supertrend_volume": "#e040fb"}
