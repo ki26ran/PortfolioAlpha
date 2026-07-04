@@ -31,6 +31,9 @@ Thumbs.db
 *.log
 sync_log.txt
 
+# Generated task scheduler XML files
+scheduled_tasks/
+
 # Secrets (Telegram tokens, broker creds)
 telegram_config.json
 broker_config.json
