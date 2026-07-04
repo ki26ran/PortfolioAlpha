@@ -113,8 +113,8 @@ streamlit run dashboard.py
 # Stock selection at 08:30 (weekdays)
 30 8 * * 1-5 cd /path/to/PortfolioAlpha && python agents/stock_selection.py
 
-# Live trader at 08:50 (weekdays)
-50 8 * * 1-5 cd /path/to/PortfolioAlpha && python agents/live_trader.py
+# Live trader at 09:42 (weekdays — entry phase + hourly monitor)
+42 9 * * 1-5 cd /path/to/PortfolioAlpha && python agents/live_trader.py
 ```
 
 ## Configuration

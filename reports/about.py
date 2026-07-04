@@ -52,7 +52,8 @@ def show():
         | **08:30** | Stock Selection | Scans yesterday's close for signals across all enabled strategies |
         | **09:15** | Market opens | --- |
         | **09:42** | Live Trader Entry Phase | Reads cached selections, attempts zscore entry on 1-min data |
-        | **09:42-15:15** | Monitor Phase | Every 60s: checks trailing SL, target, retries unfilled signals |
+        | **09:42-10:42** | Z-Score Retry Window | Retries unfilled z-score entries every 5 min (max 60 min) |
+        | **~10:42-15:15** | Monitor Phase | Every 60 min: checks trailing SL, target hits |
         | **15:15** | End of Session | OPEN positions saved to file (carry forward to next day) |
         | **15:30** | Market closes | --- |
 

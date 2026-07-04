@@ -125,6 +125,8 @@ def save_csv(path, fieldnames, rows):
 
 
 CHECK_INTERVAL = 60
+MONITOR_INTERVAL = 3600  # 1 hour for position SL/target checks
+ENTRY_RETRY_WINDOW = 60  # minutes to retry unfilled signals after entry phase
 CLOSE_HOUR, CLOSE_MIN = 15, 15
 _RETRY_COUNT = 3
 
@@ -637,14 +639,22 @@ def _phase_monitor():
             return
         print(f"  {len(_unfilled_signals)} unfilled signals — will retry periodically")
 
+    entry_deadline = now + timedelta(minutes=ENTRY_RETRY_WINDOW)
     _last_retry_time = None
     _retry_interval = timedelta(minutes=5)
 
     while _now() < close_time:
         changed = False
+        now_time = _now()
+        after_entry_window = now_time >= entry_deadline
 
-        # Retry unfilled signals every 5 minutes
-        if _unfilled_signals:
+        # After entry window closes, drop stale unfilled signals
+        if after_entry_window and _unfilled_signals:
+            print(f"  [{_now_str()}] Entry window closed — dropping {len(_unfilled_signals)} unfilled signals")
+            _unfilled_signals.clear()
+
+        # Retry unfilled signals every 5 minutes (only within entry window)
+        if _unfilled_signals and not after_entry_window:
                 now_time = _now()
                 if _last_retry_time is None or now_time - _last_retry_time >= _retry_interval:
                     _last_retry_time = now_time
@@ -746,7 +756,14 @@ def _phase_monitor():
             positions = list(reversed(deduped_positions))
             save_json(POSITIONS_FILE, positions)
         remaining = (close_time - _now()).total_seconds()
-        time.sleep(max(30, remaining) if remaining <= CHECK_INTERVAL else CHECK_INTERVAL)
+        if remaining <= CHECK_INTERVAL:
+            time.sleep(max(30, remaining))
+        elif remaining <= 1800:  # last 30 min: accelerate to 60s
+            time.sleep(CHECK_INTERVAL)
+        elif bool(_unfilled_signals) and _now() < entry_deadline:  # entry window: fast retry
+            time.sleep(CHECK_INTERVAL)
+        else:  # normal hourly monitoring
+            time.sleep(min(MONITOR_INTERVAL, remaining))
 
     # End of session — save carry-forward positions
     save_json(POSITIONS_FILE, positions)
