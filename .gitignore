@@ -29,6 +29,7 @@ Thumbs.db
 
 # Logs
 *.log
+sync_log.txt
 
 # Secrets (Telegram tokens, broker creds)
 telegram_config.json

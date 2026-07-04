@@ -1,0 +1,15 @@
+[Unit]
+Description=PortfolioAlpha Live Trader
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /opt/PortfolioAlpha/agents/live_trader.py
+WorkingDirectory=/opt/PortfolioAlpha
+Restart=on-failure
+RestartSec=30
+StandardOutput=append:/var/log/portfolioalpha-live.log
+StandardError=append:/var/log/portfolioalpha-live.log
+
+[Install]
+WantedBy=multi-user.target

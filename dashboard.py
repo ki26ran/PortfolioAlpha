@@ -15,6 +15,7 @@ PAGES = {
     "\U0001f4ca Dashboard": "reports.dashboard",
     "\U0001f4cb Stock Selection": "reports.stock_selection",
     "\U0001f4ca Backtest": "reports.backtest",
+    "\U0001f504 Data Sync": "reports.sync_status",
     "\U0001f6e0\ufe0f Admin": "reports.admin",
     "\u2699\ufe0f Scheduler": "reports.scheduler",
     "\u2139\ufe0f About": "reports.about",

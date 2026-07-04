@@ -1,0 +1,13 @@
+[Unit]
+Description=PortfolioAlpha Data Sync
+After=network.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/bin/python3 /opt/PortfolioAlpha/agents/data_sync.py
+WorkingDirectory=/opt/PortfolioAlpha
+StandardOutput=append:/var/log/portfolioalpha-sync.log
+StandardError=append:/var/log/portfolioalpha-sync.log
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,8 @@
+# PortfolioAlpha — Data sync (Mon-Fri at 08:30)
+30 8 * * 1-5 root cd /opt/PortfolioAlpha && /usr/bin/python3 agents/data_sync.py >> /var/log/portfolioalpha-sync.log 2>&1
+
+# PortfolioAlpha — Stock selection (Mon-Fri at 08:45)
+45 8 * * 1-5 root cd /opt/PortfolioAlpha && /usr/bin/python3 agents/stock_selection.py >> /var/log/portfolioalpha-selection.log 2>&1
+
+# PortfolioAlpha — Live trader (Mon-Fri at 09:15, after market opens)
+15 9 * * 1-5 root cd /opt/PortfolioAlpha && /usr/bin/python3 agents/live_trader.py >> /var/log/portfolioalpha-live.log 2>&1
