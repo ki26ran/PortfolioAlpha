@@ -5,7 +5,7 @@ import sys, os
 _broker_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _broker_root not in sys.path:
     sys.path.insert(0, _broker_root)
-from db import read_credentials
+from .db import read_credentials
 
 warnings.filterwarnings("ignore")
 

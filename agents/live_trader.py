@@ -265,18 +265,21 @@ def _get_entry_price_live(sym, direction, date_str, entry_mode):
 
 
 def _load_all_selections():
-    """Load selections from per-strategy files. Returns merged dict matching combined format."""
+    """Load selections from combined selections.json or fall back to per-strategy files."""
     combined = {"date": datetime.now().strftime("%Y-%m-%d"), "results": {}}
-    sdir = os.path.join(DATA_DIR, "..", "cfg", "strategies.json")
-    if not os.path.exists(sdir):
-        sdir = os.path.join(DATA_DIR, "..", "cfg", "default_strategies.json")
-    try:
-        with open(sdir) as f:
-            strat_cfgs = json.load(f) if isinstance(json.load(f), list) else []
-    except Exception:
-        strat_cfgs = []
-    strat_names = {s.get("id"): s.get("name", s.get("id", "?")) for s in strat_cfgs}
-
+    combined_file = SEL_FILE
+    if os.path.exists(combined_file):
+        try:
+            with open(combined_file) as f:
+                sd = json.load(f)
+            combined["date"] = sd.get("date", combined["date"])
+            for sid, sigs in sd.get("results", {}).items():
+                if sigs and sid in ["donchian_adx", "keltner_rsi", "supertrend_volume"]:
+                    combined["results"][sid] = {"name": _strategy_names.get(sid, sid), "data": sigs}
+            return combined
+        except Exception:
+            pass
+    # Fallback: per-strategy files
     for sid in ["donchian_adx", "keltner_rsi", "supertrend_volume"]:
         sf = os.path.join(DATA_DIR, f"selections_{sid}.json")
         if os.path.exists(sf):
@@ -284,7 +287,7 @@ def _load_all_selections():
                 with open(sf) as f:
                     sd = json.load(f)
                 combined["results"][sid] = {
-                    "name": strat_names.get(sid, sid),
+                    "name": _strategy_names.get(sid, sid),
                     "data": sd.get("data", []),
                 }
             except Exception:
