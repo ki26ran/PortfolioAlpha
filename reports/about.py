@@ -32,16 +32,17 @@ def show():
         - **Ichimoku Cloud** — TK Cross + Kumo + ADX > 25 (Disabled)
 
         **Capital & Position Sizing:**
-        - Total capital: **Rs. 500,000**
+        - Total capital: **Rs. 1,500,000**
         - Margin per position: ~Rs. 200,000 (lot size x price x 15%) + Rs. 50,000 buffer
-        - **Max positions per strategy: 2** (total max: 4 across both)
-        - Position sizing: **Lot-based** (actual NSE F&O lot sizes)
+        - **Max positions per strategy: 3** (total max: 9 across all)
+        - Position sizing: **Lot-based**, **Capital-based**, or **Options** (selectable per backtest/run)
+        - Options mode: uses delta model (ATM=0.5, ITM1=0.75) with monthly expiry. Switches to ATM if <10d to expiry (better liquidity)
         - Universe: **Margin < 200K** (dynamically filtered from live yfinance prices)
 
         **Risk Parameters:**
         - Stop-loss: **3x daily ATR** (wider swing stop)
-        - Trailing SL: **1.5%** from best price (tightened from 3% for higher WR)
-        - Hard SL: **Rs. 50,000** per position (tightened from 75K for lower DD)
+        - Trailing SL: **1.5%** from best price
+        - Hard SL: **Rs. 50,000** per position
         - Risk-reward ratio: **1:1.5**
         - No EOD close — positions carry forward multi-day
 
@@ -126,7 +127,8 @@ def show():
         | CAPITAL_TOTAL | 1,500,000 | Total capital across all strategies |
         | MAX_POSITIONS_PER_STRATEGY | 3 | Max concurrent positions per strategy |
         | MAX_POSITIONS_TOTAL | 6 | Max concurrent positions across both strategies |
-        | POSITION_SIZING | "lot" | Uses actual NSE F&O lot sizes |
+        | POSITION_SIZING | "lot" | "lot" (F&O lot), "capital" (fixed capital), or "options" (delta model) |
+        | OPTION_STRIKE | "ATM" | Base strike for options mode. System auto-switches: <10d to expiry → ATM, >=10d → ITM1 |
         | MAX_MARGIN_PER_STOCK | 200,000 | Max futures margin per 1-lot position |
         | MARGIN_RATE | 0.15 | Approx margin as % of contract value |
         | TRAIL_PCT | 0.015 (1.5%) | Trailing SL: 1.5% from best price |
@@ -141,6 +143,26 @@ def show():
         - **SL_ATR_MULTIPLIER = 3**: 1.5x the daily range as a stop — wide enough to avoid intraday noise
         - **TRAIL_PCT = 1.5%**: Tightened from 3% — backtest showed +Rs.1.65M combined P&L gain (3%→1.5%) with higher WR (84% vs 71%) and lower DD
         - **HARD_SL = 50,000**: Tightened from 75K — caps max loss per position tighter; ATR-based SL remains primary exit
+
+        **Three Position Sizing Modes:**
+
+        **1. Lot sizing (`"lot"`)**
+        - `qty = lot_size` (from universe table, e.g. RELIANCE=250)
+        - `PnL = (exit - entry) x lot_size`
+        - Best for: realistic F&O simulation
+
+        **2. Capital sizing (`"capital"`)**
+        - `qty = capital / price / max_positions`
+        - `PnL = (exit - entry) x qty`
+        - Best for: comparing across stocks regardless of lot size
+
+        **3. Options sizing (`"options"`)**
+        - `qty = lot_size` (F&O lot, same as underlying)
+        - `PnL = (exit - entry) x delta x lot_size`
+        - Delta: ATM=0.5, ITM1=0.75
+        - Expiry: monthly (last Thursday). If <10 days to expiry → use next month ATM (better liquidity)
+        - Premium estimate: `stock_price x time_value_pct` (3% for next month, 2% for current month)
+        - Best for: simulating option-based strategies (lower capital, defined risk)
 
         ### cfg/strategies.json - Strategy Registry
         Each strategy is a JSON entry. Fields:

@@ -7,7 +7,8 @@ from cfg.settings import (CAPITAL_TOTAL, MAX_POSITIONS_PER_STRATEGY,
     MAX_POSITIONS_TOTAL,     TRAIL_PCT, RR_RATIO, HARD_SL_ENABLED, HARD_SL_AMOUNT,
     SL_ATR_MULTIPLIER,
     GAP_FILTER_ENABLED, ENTRY_TIME, STRATEGY_WEIGHTS, CAPITAL_MODE,
-    POSITION_SIZING, MAX_MARGIN_PER_STOCK, MARGIN_RATE, FALLBACK_CUTOFF)
+    POSITION_SIZING, MAX_MARGIN_PER_STOCK, MARGIN_RATE, FALLBACK_CUTOFF,
+    OPTION_STRIKE)
 from core.data_loader import download_month
 from cfg.universes import get_lot_size
 
@@ -132,7 +133,74 @@ def _get_entry_price(sym, entry_date, direction, entry_mode):
     return None, None
 
 
-def run_backtest(strategy, months, universe=None, entry_mode="zscore", capital=CAPITAL_TOTAL, max_pos=MAX_POSITIONS_PER_STRATEGY):
+# ── Options helpers ──────────────────────────────────────────
+
+def _nse_monthly_expiry(year, month):
+    """Return last Thursday of given month (NSE monthly expiry)."""
+    last = pd.Timestamp(year, month, 1) + pd.offsets.MonthEnd(0)
+    # Walk backwards to find Thursday (weekday=3)
+    while last.weekday() != 3:
+        last -= timedelta(days=1)
+    return last
+
+
+def _option_sizing(entry_price, direction, entry_date, lot_size, tick_size=0.05, user_strike="ATM"):
+    dt = pd.Timestamp(entry_date)
+    cur_exp = _nse_monthly_expiry(dt.year, dt.month)
+    dte = (cur_exp - dt).days
+    if dte < 10:
+        next_m = dt.month + 1 if dt.month < 12 else 1
+        next_y = dt.year if dt.month < 12 else dt.year + 1
+        exp = _nse_monthly_expiry(next_y, next_m)
+        strike = round(entry_price / tick_size) * tick_size
+        delta = 0.5
+        tv_pct = 0.03
+        label = f"ATM ({exp.strftime('%b')})"
+    else:
+        exp = cur_exp
+        if user_strike == "ITM1":
+            strike = round(entry_price / tick_size) * tick_size
+            if direction == "LONG":
+                strike -= tick_size
+            else:
+                strike += tick_size
+            delta = 0.75
+            tv_pct = 0.02
+            label = f"ITM1 ({exp.strftime('%b')})"
+        else:
+            strike = round(entry_price / tick_size) * tick_size
+            delta = 0.5
+            tv_pct = 0.02
+            label = f"ATM ({exp.strftime('%b')})"
+    return {"strike": round(strike, 2), "delta": delta, "tv_pct": tv_pct,
+            "expiry": exp.strftime("%Y-%m-%d"), "label": label}
+
+
+def _option_premium(price, strike, direction, tv_pct):
+    """Estimate option premium = intrinsic + time value."""
+    if direction == "LONG":
+        intrinsic = max(0, price - strike)
+    else:
+        intrinsic = max(0, strike - price)
+    time_val = price * tv_pct
+    return intrinsic + time_val
+
+
+def _option_pnl(entry_price, exit_price, direction, sizing):
+    """PnL = (exit - entry) * delta * lot_size for call.
+    For put: (entry - exit) * delta * lot_size.
+    sizing is the position dict with option_delta, qty keys."""
+    delta = sizing.get("option_delta", 0.5)
+    lot = sizing.get("qty", 1)
+    if direction == "LONG":
+        return (exit_price - entry_price) * delta * lot
+    else:
+        return (entry_price - exit_price) * delta * lot
+
+
+def run_backtest(strategy, months, universe=None, entry_mode="zscore",
+                 capital=CAPITAL_TOTAL, max_pos=MAX_POSITIONS_PER_STRATEGY,
+                 position_sizing=POSITION_SIZING, option_strike=OPTION_STRIKE):
     """Run backtest for a strategy. entry_mode can be overridden; falls back to strategy's _entry_time."""
     # Use per-strategy entry_time if not explicitly overridden
     if entry_mode == "zscore":
@@ -205,7 +273,7 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore", capital=C
                         if ref_close and abs(row["open"] - ref_close) / ref_close > 0.03:
                             continue
                     qty = max(1, int(capital / ep / max(1, max_pos)))
-                    if POSITION_SIZING == "lot":
+                    if position_sizing == "lot":
                         sym_clean = sym.replace(".NS", "")
                         lot_size = get_lot_size(sym_clean)
                         if lot_size is None:
@@ -214,6 +282,26 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore", capital=C
                         if margin > MAX_MARGIN_PER_STOCK:
                             continue
                         qty = lot_size
+                        opt_extra = {}
+                    elif position_sizing == "options":
+                        sym_clean = sym.replace(".NS", "")
+                        lot_size = get_lot_size(sym_clean)
+                        if lot_size is None:
+                            continue
+                        tick_size = getattr(strategy, 'tick_size', 0.05)
+                        opt_sizing = _option_sizing(ep, sig["direction"], ts, lot_size, tick_size, user_strike=option_strike)
+                        opt_sizing["lot_size"] = lot_size
+                        qty = lot_size
+                        entry_prem = _option_premium(ep, opt_sizing["strike"], sig["direction"], opt_sizing["tv_pct"])
+                        opt_extra = {
+                            "option_strike": opt_sizing["strike"],
+                            "option_delta": opt_sizing["delta"],
+                            "option_expiry": opt_sizing["expiry"],
+                            "option_label": opt_sizing["label"],
+                            "entry_premium": round(entry_prem, 2),
+                        }
+                    else:
+                        opt_extra = {}
                     tr = sl
                     if HARD_SL_ENABLED and HARD_SL_AMOUNT > 0:
                         ml = HARD_SL_AMOUNT / qty
@@ -221,7 +309,8 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore", capital=C
                     adx_v = row.get("adx", 50)
                     ds.append((adx_v, {"sym": sym, "dir": "L" if sig["direction"] == "LONG" else "S",
                         "ep": ep, "sl": sl, "init_sl": sl, "tr": tr, "target": target, "qty": qty,
-                        "dt": ts, "bp": ep, "adx": adx_v, "entry_time_str": entry_time_str}))
+                        "dt": ts, "bp": ep, "adx": adx_v, "entry_time_str": entry_time_str,
+                        "position_sizing": position_sizing, **opt_extra}))
 
             selected = []
             if len(pos) < max_pos and ds:
@@ -262,11 +351,19 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore", capital=C
                 if ex_p is None and max_hold is not None and held_days >= max_hold:
                     ex_p, reason = c, "MAX_HOLD"
                 if ex_p is not None:
-                    pnl = (ex_p - p["ep"]) * p["qty"] if il else (p["ep"] - ex_p) * p["qty"]
+                    sizing_mode = p.get("position_sizing", POSITION_SIZING)
+                    if sizing_mode == "options" and "option_delta" in p:
+                        pnl = _option_pnl(p["ep"], ex_p, "LONG" if il else "SHORT", p)
+                        exit_prem = _option_premium(ex_p, p.get("option_strike", p["ep"]),
+                                                    "LONG" if il else "SHORT",
+                                                    p.get("tv_pct", 0.02))
+                    else:
+                        pnl = (ex_p - p["ep"]) * p["qty"] if il else (p["ep"] - ex_p) * p["qty"]
+                        exit_prem = None
                     pct = ((ex_p - l) / (h - l) if not il else (h - ex_p) / (h - l)) if h > l else 0.5
                     mins = int(9 * 60 + 15 + pct * 375)
                     init_sl = p.get("init_sl", p["sl"])
-                    closed.append({"sym": p["sym"].replace(".NS", ""), "dir": "LONG" if il else "SHORT",
+                    trade = {"sym": p["sym"].replace(".NS", ""), "dir": "LONG" if il else "SHORT",
                         "ep": p["ep"], "ex": ex_p, "qty": p["qty"], "pnl": round(pnl, 2),
                         "entry_dt": p["dt"], "exit_dt": ts,
                         "exit_time": f"{mins//60:02d}:{mins%60:02d}", "exit_reason": reason,
@@ -275,7 +372,15 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore", capital=C
                         "risk_total": int(abs(p["ep"] - init_sl) * p["qty"]),
                         "adx_entry": round(p.get("adx", 0), 1),
                         "entry_time_str": p.get("entry_time_str", "09:15"),
-                        "strategy": strategy.strategy_id})
+                        "strategy": strategy.strategy_id}
+                    if "option_strike" in p:
+                        trade["option_strike"] = p["option_strike"]
+                        trade["option_delta"] = p["option_delta"]
+                        trade["option_expiry"] = p["option_expiry"]
+                        trade["option_label"] = p["option_label"]
+                        trade["entry_premium"] = p.get("entry_premium", 0)
+                        trade["exit_premium"] = round(exit_prem, 2) if exit_prem is not None else 0
+                    closed.append(trade)
                     pos.remove(p)
 
         all_trades.extend(closed)

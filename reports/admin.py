@@ -13,7 +13,8 @@ if COMMON not in sys.path:
 from cfg.settings import (CAPITAL_TOTAL, MAX_POSITIONS_PER_STRATEGY, MAX_POSITIONS_TOTAL,
                            TRAIL_PCT, RR_RATIO, HARD_SL_AMOUNT, HARD_SL_ENABLED,
                            GAP_FILTER_ENABLED, REGIME_FILTER_ENABLED,
-                           CAPITAL_MODE, STRATEGY_WEIGHTS, POSITION_SIZING, MAX_MARGIN_PER_STOCK, MARGIN_RATE)
+                           CAPITAL_MODE, STRATEGY_WEIGHTS, POSITION_SIZING, MAX_MARGIN_PER_STOCK, MARGIN_RATE,
+                           OPTION_STRIKE)
 from core.notifications import get_config, update_config, is_configured
 from core.registry import get_all_strategies, load_config
 from cfg.universes import UNIVERSE_NAMES
@@ -60,7 +61,16 @@ def show():
     with tab1:
         col1, col2 = st.columns(2)
         with col1:
-            ps = st.selectbox("Position Sizing", ["lot", "capital"], index=0 if POSITION_SIZING == "lot" else 1)
+            sizing_opts = ["lot", "capital", "options"]
+            ps_idx = sizing_opts.index(POSITION_SIZING) if POSITION_SIZING in sizing_opts else 0
+            ps = st.selectbox("Position Sizing", sizing_opts, index=ps_idx)
+            if ps == "options":
+                strike_opts = ["ATM", "ITM1"]
+                os_idx = strike_opts.index(OPTION_STRIKE) if OPTION_STRIKE in strike_opts else 0
+                bt_strike = st.selectbox("Option Strike (base)", strike_opts, index=os_idx,
+                                         help="Expiry logic may override: <10d → ATM, >=10d → ITM1")
+            else:
+                bt_strike = OPTION_STRIKE
             ct = st.number_input("Total Capital", min_value=50000, max_value=5000000, value=CAPITAL_TOTAL, step=50000)
             mm = st.number_input("Max Margin per Stock (lot mode)", min_value=50000, max_value=1000000, value=MAX_MARGIN_PER_STOCK, step=10000)
             mr = st.slider("Margin Rate (% of contract)", 0.05, 0.30, MARGIN_RATE, 0.01, format="%.2f")
@@ -77,6 +87,8 @@ def show():
 
         if st.button("Save Risk Settings", type="primary"):
             _save_setting("POSITION_SIZING", ps)
+            if ps == "options":
+                _save_setting("OPTION_STRIKE", bt_strike)
             _save_setting("CAPITAL_TOTAL", ct)
             _save_setting("MAX_MARGIN_PER_STOCK", mm)
             _save_setting("MARGIN_RATE", mr)

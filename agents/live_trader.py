@@ -17,7 +17,7 @@ from common.market_data.cache import get_cache
 from cfg.settings import (CAPITAL_TOTAL, MAX_POSITIONS_PER_STRATEGY, MAX_POSITIONS_TOTAL,
                            TRAIL_PCT, RR_RATIO, HARD_SL_ENABLED, HARD_SL_AMOUNT, GAP_FILTER_ENABLED,
                            STRATEGY_WEIGHTS, CAPITAL_MODE, POSITION_SIZING, MAX_MARGIN_PER_STOCK, MARGIN_RATE,
-                           SL_ATR_MULTIPLIER, FALLBACK_CUTOFF)
+                           SL_ATR_MULTIPLIER, FALLBACK_CUTOFF, OPTION_STRIKE)
 from core.registry import get_all_strategies, get_strategy_names
 from core.notifications import send_message, is_configured
 from cfg.universes import get_lot_size
@@ -385,6 +385,25 @@ def _phase_entry():
                     if margin > MAX_MARGIN_PER_STOCK:
                         print(f"margin Rs.{margin:,.0f} > Rs.{MAX_MARGIN_PER_STOCK:,}, skipping"); continue
                     qty = lot_size
+                elif POSITION_SIZING == "options":
+                    lot_size = get_lot_size(sym)
+                    if lot_size is None:
+                        print(f"no lot data, skipping"); continue
+                    from core.backtest_engine import _option_sizing, _option_premium
+                    opt_sizing = _option_sizing(entry_price, direction, date_str, lot_size, user_strike=OPTION_STRIKE)
+                    opt_sizing["lot_size"] = lot_size
+                    qty = lot_size
+                    print(f"  Options: {opt_sizing['label']}, strike={opt_sizing['strike']:.2f}, delta={opt_sizing['delta']}, lot={lot_size}")
+                    _swing_cache.append_signal({
+                        "symbol": sym, "direction": direction,
+                        "entry": entry_price, "sl": sl_price, "target": target_price,
+                        "qty": qty, "entry_time": entry_time_str, "scanned_at": datetime.now().isoformat(),
+                        "strategy": sid,
+                        "option_strike": opt_sizing["strike"],
+                        "option_delta": opt_sizing["delta"],
+                        "option_expiry": opt_sizing["expiry"],
+                        "option_label": opt_sizing["label"],
+                    })
                 else:
                     qty = max(1, int(capital / entry_price / max_pos))
                 atr_est = entry_price * 0.02

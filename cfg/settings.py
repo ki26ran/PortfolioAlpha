@@ -13,7 +13,8 @@ STRATEGY_WEIGHTS = {
 }
 
 # Lot-based position sizing
-POSITION_SIZING = "lot"
+POSITION_SIZING = "lot"  # "lot", "capital", or "options"
+OPTION_STRIKE = "ATM"     # "ATM" or "ITM1" (base preference; expiry logic may override)
 MAX_MARGIN_PER_STOCK = 200000
 MARGIN_RATE = 0.15
 

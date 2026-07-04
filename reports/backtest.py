@@ -12,7 +12,7 @@ if BASE not in sys.path:
 from core.registry import get_all_strategies, get_strategy_names, get_strategy_universe, get_strategy
 from core.backtest_engine import run_backtest, simulate_today, _months_from_range
 from cfg.universes import UNIVERSE_MAP, UNIVERSE_NAMES, UNIVERSE_DEFAULT
-from cfg.settings import CAPITAL_TOTAL, MAX_POSITIONS_PER_STRATEGY, ENTRY_TIME
+from cfg.settings import CAPITAL_TOTAL, MAX_POSITIONS_PER_STRATEGY, ENTRY_TIME, POSITION_SIZING, OPTION_STRIKE
 
 CSS = """
 <style>
@@ -44,6 +44,20 @@ def show():
         entry_mode = st.selectbox("Entry", ["15m_945", "walk", "zscore"], index=2)
     with col5:
         cap = st.number_input("Capital/Strategy", min_value=50000, max_value=5000000, value=CAPITAL_TOTAL, step=50000)
+
+    col6, col7 = st.columns(2)
+    with col6:
+        sizing_options = ["lot", "capital", "options"]
+        sizing_default = sizing_options.index(POSITION_SIZING) if POSITION_SIZING in sizing_options else 0
+        bt_sizing = st.selectbox("Position Sizing", sizing_options, index=sizing_default)
+    with col7:
+        if bt_sizing == "options":
+            strike_options = ["ATM", "ITM1"]
+            strike_default = strike_options.index(OPTION_STRIKE) if OPTION_STRIKE in strike_options else 0
+            bt_strike = st.selectbox("Option Strike", strike_options, index=strike_default,
+                                     help="Base selection. System may auto-switch: expiry <10d → ATM, >=10d → ITM1")
+        else:
+            bt_strike = OPTION_STRIKE
 
     # Strategy selection
     all_names = get_strategy_names()
@@ -81,8 +95,9 @@ def show():
                 c2.metric("P&L", f"Rs.{tot:+,.0f}")
                 c3.metric("Wins", f"{n_wins}W/{n_losses}L")
                 c4.metric("Win Rate", f"{wr:.0f}%")
-                cols = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
-                avail = [c for c in cols if c in df.columns]
+                cols_base = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+                opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium"]
+                avail = [c for c in cols_base + opt_cols if c in df.columns]
                 if avail:
                     st.dataframe(df[avail].style.map(
                         lambda v: "color:#00e676" if isinstance(v, (int,float)) and v > 0 else ("color:#ff5252" if isinstance(v, (int,float)) and v < 0 else ""),
@@ -113,7 +128,9 @@ def show():
                     else:
                         use_uni_name = selected_uni_name
                     universe = UNIVERSE_MAP.get(use_uni_name)
-                    trades, day_log = run_backtest(strat, months, universe=universe, entry_mode=entry_mode, capital=cap, max_pos=MAX_POSITIONS_PER_STRATEGY)
+                    trades, day_log = run_backtest(strat, months, universe=universe, entry_mode=entry_mode,
+                                                    capital=cap, max_pos=MAX_POSITIONS_PER_STRATEGY,
+                                                    position_sizing=bt_sizing, option_strike=bt_strike)
                     fd = pd.Timestamp(from_date)
                     td = pd.Timestamp(to_date) + timedelta(days=1)
                     trades = [t for t in trades if fd <= pd.Timestamp(t["entry_dt"]).floor("D") < td]
@@ -168,7 +185,9 @@ def show():
                     unsafe_allow_html=True,
                 )
                 with st.expander("View trades"):
-                    cols = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+                    cols_base = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+                    opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium"]
+                    cols = cols_base + [c for c in opt_cols if c in sdf.columns]
                     avail = [c for c in cols if c in sdf.columns]
                     display = sdf[avail].copy()
                     fmt = {"ep": "{:.2f}", "pnl": "{:+,.0f}"}
@@ -313,7 +332,9 @@ def show():
         st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Combined Trade Log")
-        cols = ["strategy", "sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+        base_cols = ["strategy", "sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+        opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium", "option_label"]
+        cols = base_cols + [c for c in opt_cols if c in pdf.columns]
         avail = [c for c in cols if c in pdf.columns]
         display = pdf[avail].copy()
         display["pnl"] = display["pnl"].apply(lambda x: f"Rs.{x:+,.0f}").astype(object)
@@ -346,7 +367,9 @@ def show():
             if df.empty:
                 st.info("No trades")
                 continue
-            cols = ["sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+            cols_base = ["sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+            opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium", "option_label"]
+            cols = cols_base + [c for c in opt_cols if c in df.columns]
             avail = [c for c in cols if c in df.columns]
             display = df[avail].copy()
             display["pnl"] = display["pnl"].apply(lambda x: f"Rs.{x:+,.0f}").astype(object)
