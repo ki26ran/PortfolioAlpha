@@ -282,6 +282,7 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore",
                         if margin > MAX_MARGIN_PER_STOCK:
                             continue
                         qty = lot_size
+                        cap_deployed = round(ep * qty * MARGIN_RATE, 2)
                         opt_extra = {}
                     elif position_sizing == "options":
                         sym_clean = sym.replace(".NS", "")
@@ -293,6 +294,7 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore",
                         opt_sizing["lot_size"] = lot_size
                         qty = lot_size
                         entry_prem = _option_premium(ep, opt_sizing["strike"], sig["direction"], opt_sizing["tv_pct"])
+                        cap_deployed = round(entry_prem * qty, 2)
                         opt_extra = {
                             "option_strike": opt_sizing["strike"],
                             "option_delta": opt_sizing["delta"],
@@ -301,6 +303,7 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore",
                             "entry_premium": round(entry_prem, 2),
                         }
                     else:
+                        cap_deployed = round(ep * qty, 2)
                         opt_extra = {}
                     tr = sl
                     if HARD_SL_ENABLED and HARD_SL_AMOUNT > 0:
@@ -310,7 +313,7 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore",
                     ds.append((adx_v, {"sym": sym, "dir": "L" if sig["direction"] == "LONG" else "S",
                         "ep": ep, "sl": sl, "init_sl": sl, "tr": tr, "target": target, "qty": qty,
                         "dt": ts, "bp": ep, "adx": adx_v, "entry_time_str": entry_time_str,
-                        "position_sizing": position_sizing, **opt_extra}))
+                        "position_sizing": position_sizing, "capital_deployed": cap_deployed, **opt_extra}))
 
             selected = []
             if len(pos) < max_pos and ds:
@@ -360,11 +363,14 @@ def run_backtest(strategy, months, universe=None, entry_mode="zscore",
                     else:
                         pnl = (ex_p - p["ep"]) * p["qty"] if il else (p["ep"] - ex_p) * p["qty"]
                         exit_prem = None
+                    cap_dep = p.get("capital_deployed", 1)
+                    roi_pct = round((pnl / cap_dep) * 100, 2) if cap_dep > 0 else 0.0
                     pct = ((ex_p - l) / (h - l) if not il else (h - ex_p) / (h - l)) if h > l else 0.5
                     mins = int(9 * 60 + 15 + pct * 375)
                     init_sl = p.get("init_sl", p["sl"])
                     trade = {"sym": p["sym"].replace(".NS", ""), "dir": "LONG" if il else "SHORT",
                         "ep": p["ep"], "ex": ex_p, "qty": p["qty"], "pnl": round(pnl, 2),
+                        "capital_deployed": round(cap_dep, 2), "roi_pct": roi_pct,
                         "entry_dt": p["dt"], "exit_dt": ts,
                         "exit_time": f"{mins//60:02d}:{mins%60:02d}", "exit_reason": reason,
                         "month": pd.Timestamp(p["dt"]).strftime("%b"),

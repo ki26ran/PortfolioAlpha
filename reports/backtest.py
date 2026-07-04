@@ -95,9 +95,14 @@ def show():
                 c2.metric("P&L", f"Rs.{tot:+,.0f}")
                 c3.metric("Wins", f"{n_wins}W/{n_losses}L")
                 c4.metric("Win Rate", f"{wr:.0f}%")
-                cols_base = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+                cols_base = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "capital_deployed", "roi_pct", "pnl", "exit_reason"]
                 opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium"]
                 avail = [c for c in cols_base + opt_cols if c in df.columns]
+                display = df[avail].copy()
+                if "capital_deployed" in display.columns:
+                    display["capital_deployed"] = display["capital_deployed"].apply(lambda x: f"Rs.{x:+,.0f}" if pd.notna(x) else "-").astype(object)
+                if "roi_pct" in display.columns:
+                    display["roi_pct"] = display["roi_pct"].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-").astype(object)
                 if avail:
                     st.dataframe(df[avail].style.map(
                         lambda v: "color:#00e676" if isinstance(v, (int,float)) and v > 0 else ("color:#ff5252" if isinstance(v, (int,float)) and v < 0 else ""),
@@ -185,7 +190,7 @@ def show():
                     unsafe_allow_html=True,
                 )
                 with st.expander("View trades"):
-                    cols_base = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+                    cols_base = ["sym", "dir", "entry_time_str", "exit_time", "ep", "ex", "qty", "capital_deployed", "roi_pct", "pnl", "exit_reason"]
                     opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium"]
                     cols = cols_base + [c for c in opt_cols if c in sdf.columns]
                     avail = [c for c in cols if c in sdf.columns]
@@ -239,13 +244,16 @@ def show():
         mdd = df["dd"].max()
         aw = w["pnl"].mean() if nw else 0
         al = abs(l["pnl"].mean()) if nl else 0
+        total_cap = df["capital_deployed"].sum() if "capital_deployed" in df.columns and not df.empty else 0
+        avg_roi = df["roi_pct"].mean() if "roi_pct" in df.columns and not df.empty else 0
         dp = df.groupby(df["exit_dt"].dt.date)["pnl"].sum() if "exit_dt" in df.columns else df.groupby(lambda _: 0)["pnl"].sum()
         sh = round(dp.mean() / dp.std() * (252 ** 0.5), 2) if len(dp) > 1 and dp.std() > 0 else 0
 
         rows.append({
             "Strategy": strat.name, "Trades": n, "P&L": f"Rs.{tot:+,.0f}", "WR": f"{wr:.0f}%",
             "PF": f"{pf:.2f}", "Sharpe": sh, "MDD": f"Rs.{mdd:+,.0f}",
-            "AvgWin": f"Rs.{aw:+,.0f}", "AvgLoss": f"Rs.{al:+,.0f}"
+            "AvgWin": f"Rs.{aw:+,.0f}", "AvgLoss": f"Rs.{al:+,.0f}",
+            "CapDep": f"Rs.{total_cap:+,.0f}", "AvgROI": f"{avg_roi:.1f}%"
         })
 
     comp_df = pd.DataFrame(rows)
@@ -294,6 +302,8 @@ def show():
         rec = tot / mdd if mdd > 0 else 0
         dp = pdf.groupby(pdf["exit_dt"].dt.date)["pnl"].sum()
         sh = round(dp.mean() / dp.std() * (252 ** 0.5), 2) if len(dp) > 1 and dp.std() > 0 else 0
+        total_cap = pdf["capital_deployed"].sum() if "capital_deployed" in pdf.columns and not pdf.empty else 0
+        avg_roi = pdf["roi_pct"].mean() if "roi_pct" in pdf.columns and not pdf.empty else 0
 
         c1, c2, c3, c4 = st.columns(4)
         c1.metric("Total Trades", n)
@@ -309,7 +319,8 @@ def show():
         c9.metric("Avg Win", f"Rs.{aw:+,.0f}")
         c10.metric("Avg Loss", f"Rs.{al:+,.0f}")
         c11.metric("Avg Hold", f"{avg_hold:.1f}d")
-        c12.metric("Recovery", f"{rec:.2f}")
+        c12.metric("Total Cap", f"Rs.{total_cap:+,.0f}")
+        st.caption(f"Avg ROI per trade: {avg_roi:.1f}%  |  Capital deployed across all trades: Rs.{total_cap:+,.0f}")
 
         st.subheader("Portfolio Equity Curve")
         strat_palette = {"donchian_adx": "#00bcd4", "keltner_rsi": "#ff9800", "supertrend_volume": "#e040fb"}
@@ -332,11 +343,15 @@ def show():
         st.plotly_chart(fig, use_container_width=True)
 
         st.subheader("Combined Trade Log")
-        base_cols = ["strategy", "sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+        base_cols = ["strategy", "sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "capital_deployed", "roi_pct", "pnl", "exit_reason"]
         opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium", "option_label"]
         cols = base_cols + [c for c in opt_cols if c in pdf.columns]
         avail = [c for c in cols if c in pdf.columns]
         display = pdf[avail].copy()
+        if "capital_deployed" in display.columns:
+            display["capital_deployed"] = display["capital_deployed"].apply(lambda x: f"Rs.{x:+,.0f}" if pd.notna(x) else "-").astype(object)
+        if "roi_pct" in display.columns:
+            display["roi_pct"] = display["roi_pct"].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-").astype(object)
         display["pnl"] = display["pnl"].apply(lambda x: f"Rs.{x:+,.0f}").astype(object)
 
         def _fmt_dt(row, col, time_col):
@@ -367,11 +382,15 @@ def show():
             if df.empty:
                 st.info("No trades")
                 continue
-            cols_base = ["sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "pnl", "exit_reason"]
+            cols_base = ["sym", "dir", "entry_dt", "exit_dt", "entry_time_str", "exit_time", "ep", "ex", "qty", "capital_deployed", "roi_pct", "pnl", "exit_reason"]
             opt_cols = ["option_strike", "option_delta", "entry_premium", "exit_premium", "option_label"]
             cols = cols_base + [c for c in opt_cols if c in df.columns]
             avail = [c for c in cols if c in df.columns]
             display = df[avail].copy()
+            if "capital_deployed" in display.columns:
+                display["capital_deployed"] = display["capital_deployed"].apply(lambda x: f"Rs.{x:+,.0f}" if pd.notna(x) else "-").astype(object)
+            if "roi_pct" in display.columns:
+                display["roi_pct"] = display["roi_pct"].apply(lambda x: f"{x:+.1f}%" if pd.notna(x) else "-").astype(object)
             display["pnl"] = display["pnl"].apply(lambda x: f"Rs.{x:+,.0f}").astype(object)
             # Format dates with times (handle both Timestamp and string)
             def _fmt_dt(row, col, time_col):
